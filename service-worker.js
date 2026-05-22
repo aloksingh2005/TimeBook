@@ -1,31 +1,35 @@
 const CACHE_VERSION = 'v4';
 const APP_SHELL_CACHE = `timebook-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `timebook-runtime-${CACHE_VERSION}`;
-const CORE_ASSETS = [
-  '/index.html',
-  '/calculator.html',
-  '/history.html',
-  '/customers.html',
-  '/analytics.html',
-  '/settings.html',
-  '/styles.css',
-  '/app.js',
-  '/config.js',
-  '/pwa.js',
-  '/manifest.json',
-  '/icon.png',
-  '/icons/icon-72.png',
-  '/icons/icon-96.png',
-  '/icons/icon-128.png',
-  '/icons/icon-144.png',
-  '/icons/icon-152.png',
-  '/icons/icon-180.png',
-  '/icons/icon-192.png',
-  '/icons/icon-384.png',
-  '/icons/icon-512.png',
-  '/icons/maskable-192.png',
-  '/icons/maskable-512.png'
+const SCOPE_URL = new URL(self.registration.scope);
+const SCOPE_PATH = SCOPE_URL.pathname;
+const CORE_ASSET_PATHS = [
+  'index.html',
+  'calculator.html',
+  'history.html',
+  'customers.html',
+  'analytics.html',
+  'settings.html',
+  'styles.css',
+  'app.js',
+  'config.js',
+  'pwa.js',
+  'manifest.json',
+  'icon.png',
+  'icons/icon-72.png',
+  'icons/icon-96.png',
+  'icons/icon-128.png',
+  'icons/icon-144.png',
+  'icons/icon-152.png',
+  'icons/icon-180.png',
+  'icons/icon-192.png',
+  'icons/icon-384.png',
+  'icons/icon-512.png',
+  'icons/maskable-192.png',
+  'icons/maskable-512.png'
 ];
+const CORE_ASSETS = CORE_ASSET_PATHS.map((path) => new URL(path, SCOPE_URL).pathname);
+const APP_FALLBACK = new URL('calculator.html', SCOPE_URL).pathname;
 
 function isCoreAsset(request) {
   const url = new URL(request.url);
@@ -67,7 +71,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  if (url.pathname.startsWith('/api')) return;
+  if (url.pathname.startsWith(`${SCOPE_PATH}api`)) return;
 
   if (isNavigationRequest(request)) {
     event.respondWith(
@@ -76,7 +80,7 @@ self.addEventListener('fetch', (event) => {
           putInCache(RUNTIME_CACHE, request, response);
           return response;
         })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('/calculator.html')))
+        .catch(() => caches.match(request).then((cached) => cached || caches.match(APP_FALLBACK)))
     );
     return;
   }

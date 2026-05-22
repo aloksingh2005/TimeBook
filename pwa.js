@@ -15,7 +15,7 @@
     if (!('serviceWorker' in navigator)) return;
 
     try {
-      const registration = await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+      const registration = await navigator.serviceWorker.register('./service-worker.js');
 
       registration.addEventListener('updatefound', () => {
         const worker = registration.installing;
