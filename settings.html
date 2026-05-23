@@ -99,12 +99,12 @@
                         <p class="panel-subtitle">Backup and restore database snapshots in JSON or CSV format.</p>
                     </div>
                     
-                    <div class="data-actions" style="display:flex;flex-direction:column;gap:1rem">
-                        <div style="display:flex;gap:0.75rem">
-                            <button id="exportJSON" class="btn btn-secondary" style="flex:1">
+                    <div class="data-actions">
+                        <div class="data-actions-row">
+                            <button id="exportJSON" class="btn btn-secondary">
                                 <i class="fas fa-download"></i> Export JSON
                             </button>
-                            <button id="exportCSV" class="btn btn-secondary" style="flex:1">
+                            <button id="exportCSV" class="btn btn-secondary">
                                 <i class="fas fa-file-csv"></i> Export CSV
                             </button>
                         </div>
@@ -126,15 +126,16 @@
                         <p class="panel-subtitle">Customize billing settings and color preferences.</p>
                     </div>
 
-                    <div style="display:flex;flex-direction:column;gap:1.25rem">
-                        <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div class="preferences-stack">
+                        <div class="preference-row">
                             <div>
                                 <span style="font-weight:600;display:block">Local Theme</span>
                                 <span style="font-size:0.8rem;color:var(--text-secondary)">Toggle light or dark styling</span>
                             </div>
-                            <button class="theme-toggle" id="prefThemeToggle" aria-label="Toggle theme">
-                                <i class="fas fa-moon"></i>
-                            </button>
+                            <label class="toggle-switch" for="prefThemeToggle" aria-label="Toggle theme">
+                                <input type="checkbox" id="prefThemeToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
 
                         <div style="display:flex;justify-content:space-between;align-items:center">

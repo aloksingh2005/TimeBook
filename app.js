@@ -280,8 +280,9 @@ function toggleSidebar(show) {
 function setActiveNav() {
     const page = document.body.dataset.page;
     if (!page || !DOM.navLinks) return;
+    const mappedPage = page === 'customer-details' ? 'customers' : page;
     DOM.navLinks.forEach((link) => {
-        const matches = link.getAttribute('data-nav') === page;
+        const matches = link.getAttribute('data-nav') === mappedPage;
         link.classList.toggle('active', matches);
     });
 }
@@ -386,7 +387,7 @@ function updateRateDisplay() {
 function updateDynamicRatesDisplay() {
     const currentRatesDisplay = document.getElementById('currentRatesDisplay');
     if (currentRatesDisplay) {
-        currentRatesDisplay.textContent = `₹${RATE_CONFIG.hourly}/hr · ₹${RATE_CONFIG.minute}/min`;
+        currentRatesDisplay.textContent = `₹${RATE_CONFIG.hourly}/hr`;
     }
     if (DOM.rateType) {
         const hourlyOpt = DOM.rateType.querySelector('option[value="hourly"]');
@@ -580,12 +581,10 @@ function updateCustomerList(filter = '') {
         const totalDue = custTx.filter(t => t.paymentStatus !== 'paid').reduce((sum, t) => sum + t.amount, 0);
 
         const mobile = c.mobile ? escapeHTML(c.mobile) : '';
-        const initial = (c.name || '?').charAt(0).toUpperCase();
         const item = document.createElement('div');
         item.classList.add('customer-item');
         item.innerHTML = `
             <div class="customer-item-left">
-                <div class="customer-avatar">${initial}</div>
                 <div class="customer-info">
                     <div class="customer-name">${escapeHTML(c.name)}</div>
                     ${mobile
@@ -730,11 +729,9 @@ ${notes ? `Notes: ${notes}` : ''}`;
     });
 
     try {
-        const { data, error } = await supabase.from('sessions').insert([payload]).select();
+        const { error } = await supabase.from('sessions').insert([payload]);
         if (error) throw error;
-        
-        const created = fromDbCalculation(data[0]);
-        state.transactions.push(created);
+        await loadTransactions();
         showNotification('Transaction saved successfully');
 
         // Clear notes
@@ -751,7 +748,6 @@ ${notes ? `Notes: ${notes}` : ''}`;
 
         updateRateDisplay(); // Bug fix: restore rate display after save
         renderCalculationSummary();
-        
         updateHistoryList();
         updateAnalytics();
     } catch (error) {
@@ -834,7 +830,9 @@ function updateHistoryList(filter = '') {
             <div class="history-content ${t.combined ? 'combined-transaction' : ''}">
                 <div class="history-meta">
                     <input type="checkbox" class="history-checkbox" data-id="${t.id}">
-                    <span class="history-customer">${escapeHTML(customer?.name || 'Unknown')}</span>
+                    <button type="button" class="history-customer-link" data-customer-id="${customer?.id || ''}" title="View customer details">
+                        <span class="history-customer">${escapeHTML(customer?.name || 'Unknown')}</span>
+                    </button>
                     <span class="history-date">${formatDate(t.date)}</span>
                     <span class="payment-status ${paymentStatus === 'paid' ? 'status-paid' : 'status-due'}">
                         <i class="fas ${paymentStatus === 'paid' ? 'fa-check-circle' : 'fa-clock'}"></i>
@@ -847,7 +845,6 @@ function updateHistoryList(filter = '') {
                 <div class="history-details">
                     <span class="history-detail-item"><i class="fas fa-clock"></i> ${formatTime(t.start)} &ndash; ${formatTime(t.end)}</span>
                     <span class="history-detail-item"><i class="fas fa-hourglass-half"></i> ${t.duration.hours}h ${t.duration.minutes}m</span>
-                    <span class="history-detail-item"><i class="fas fa-tag"></i> ${formatCurrency(t.rateAmount)}/${t.rateType === 'hourly' ? 'hr' : 'min'}</span>
                 </div>
                 <div class="history-amount">${formatCurrency(t.amount)}</div>
                 ${t.timeSlots ? `
@@ -917,6 +914,62 @@ function updateHistorySummary(transactions) {
         `;
     }
     DOM.historySummary.style.display = 'block';
+}
+
+function initCustomerDetailsPage() {
+    const card = document.getElementById('customerDetailsCard');
+    if (!card) return;
+
+    const customerId = parseInt(new URLSearchParams(window.location.search).get('id'), 10);
+    const customer = state.customers.find(c => c.id === customerId);
+
+    if (!customer) {
+        card.innerHTML = '<div class="empty-state"><div class="empty-state-title">Customer not found</div></div>';
+        return;
+    }
+
+    const customerTransactions = state.transactions.filter(t => t.customerId === customer.id);
+    const totalAmount = customerTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalPaid = customerTransactions.filter(t => t.paymentStatus === 'paid').reduce((sum, t) => sum + t.amount, 0);
+    const totalDue = customerTransactions.filter(t => t.paymentStatus !== 'paid').reduce((sum, t) => sum + t.amount, 0);
+    const totalMinutes = customerTransactions.reduce((sum, t) => sum + t.duration.totalMinutes, 0);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const phone = String(customer.mobile || '').trim();
+    const phoneHref = phone ? phone.replace(/[^\d+]/g, '') : '';
+
+    card.innerHTML = `
+        <div class="customer-details-header">
+            <div>
+                <p class="eyebrow">Customer Details</p>
+                <h2>${customer.name}</h2>
+                <p class="panel-subtitle">${phone || 'No mobile number saved'}</p>
+            </div>
+            ${phoneHref ? `<a class="btn btn-primary" href="tel:${phoneHref}"><i class="fas fa-phone"></i> Call Customer</a>` : ''}
+        </div>
+        <div class="customer-details-grid">
+            <div class="summary-tile"><span>Sessions</span><strong>${customerTransactions.length}</strong></div>
+            <div class="summary-tile"><span>Total Time</span><strong>${hours}h ${minutes}m</strong></div>
+            <div class="summary-tile"><span>Total Billed</span><strong>${formatCurrency(totalAmount)}</strong></div>
+            <div class="summary-tile"><span>Total Paid</span><strong>${formatCurrency(totalPaid)}</strong></div>
+            <div class="summary-tile"><span>Total Due</span><strong>${formatCurrency(totalDue)}</strong></div>
+            <div class="summary-tile"><span>Contact</span><strong>${phone || 'N/A'}</strong></div>
+        </div>
+        <div class="customer-transaction-list">
+            ${customerTransactions.length ? customerTransactions.map(t => `
+                <div class="customer-transaction-card">
+                    <div class="customer-transaction-top">
+                        <strong>${formatDate(t.date)}</strong>
+                        <span>${formatCurrency(t.amount)}</span>
+                    </div>
+                    <div class="history-details">
+                        <span class="history-detail-item"><i class="fas fa-clock"></i> ${formatTime(t.start)} &ndash; ${formatTime(t.end)}</span>
+                        <span class="history-detail-item"><i class="fas fa-hourglass-half"></i> ${t.duration.hours}h ${t.duration.minutes}m</span>
+                    </div>
+                </div>
+            `).join('') : '<div class="empty-state"><div class="empty-state-title">No transactions yet</div></div>'}
+        </div>
+    `;
 }
 
 async function togglePaymentStatus(transactionId) {
@@ -1033,6 +1086,7 @@ if (DOM.confirmAction) {
                     const { error } = await supabase.from('sessions').delete().eq('id', deletedId);
                     if (error) throw error;
                     showNotification('Transaction deleted');
+                    await loadTransactions();
                 } catch (error) {
                     handleBackendError(error);
                 }
@@ -1102,6 +1156,7 @@ if (DOM.confirmAction) {
                     const { error } = await supabase.from('sessions').delete().in('id', ids);
                     if (error) throw error;
                     showNotification(`${ids.length} transactions deleted`);
+                    await loadTransactions();
                 } catch (error) {
                     handleBackendError(error);
                 }
@@ -1292,6 +1347,13 @@ if (DOM.historyList) {
     DOM.historyList.addEventListener('click', (e) => {
         const target = e.target.closest('button, input');
         if (!target) return;
+        if (target.classList.contains('history-customer-link') || target.closest('.history-customer-link')) {
+            const customerId = target.closest('.history-customer-link')?.getAttribute('data-customer-id');
+            if (customerId) {
+                window.location.href = `customer-details.html?id=${encodeURIComponent(customerId)}`;
+            }
+            return;
+        }
         if (target.classList.contains('delete-btn') || target.closest('.delete-btn')) {
             const itemEl = target.closest('.history-item');
             const id = parseInt(itemEl?.querySelector('.history-checkbox')?.dataset.id, 10);
@@ -1598,12 +1660,16 @@ function initSettingsPage() {
 
     if (prefThemeToggle) {
         const isDark = document.body.classList.contains('dark-mode');
-        const icon = prefThemeToggle.querySelector('i');
-        if (icon) {
-            icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
+        if (prefThemeToggle.tagName === 'INPUT') {
+            prefThemeToggle.checked = isDark;
+        } else {
+            const icon = prefThemeToggle.querySelector('i');
+            if (icon) {
+                icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
+            }
         }
 
-        prefThemeToggle.addEventListener('click', () => {
+        prefThemeToggle.addEventListener('change', () => {
             DOM.body.classList.toggle('dark-mode');
             const nowDark = DOM.body.classList.contains('dark-mode');
             localStorage.setItem('theme', nowDark ? 'dark' : 'light');
@@ -1613,8 +1679,13 @@ function initSettingsPage() {
             if (mainIcon) {
                 mainIcon.className = nowDark ? 'fas fa-sun' : 'fas fa-moon';
             }
-            if (icon) {
-                icon.className = nowDark ? 'fas fa-sun' : 'fas fa-moon';
+            if (prefThemeToggle.tagName === 'INPUT') {
+                prefThemeToggle.checked = nowDark;
+            } else {
+                const icon = prefThemeToggle.querySelector('i');
+                if (icon) {
+                    icon.className = nowDark ? 'fas fa-sun' : 'fas fa-moon';
+                }
             }
         });
     }
@@ -1876,7 +1947,12 @@ document.addEventListener('keydown', (e) => {
 
         // Load data from DB if credentials exist
         const needsCustomers = Boolean(DOM.customerSelect || DOM.customerList || DOM.historyCustomerFilter);
-        const needsTransactions = Boolean(DOM.historyList || DOM.analyticsDashboard || DOM.customerList);
+        const needsTransactions = Boolean(
+            DOM.historyList
+            || DOM.analyticsDashboard
+            || DOM.customerList
+            || document.getElementById('customerDetailsCard')
+        );
         if (needsCustomers) await loadCustomers();
         if (needsTransactions) await loadTransactions();
 
@@ -1890,6 +1966,8 @@ document.addEventListener('keydown', (e) => {
             initSettingsPage();
         } else if (page === 'calculator') {
             initCalculatorPage();
+        } else if (page === 'customer-details') {
+            initCustomerDetailsPage();
         }
 
     } catch (error) {
@@ -1898,3 +1976,4 @@ document.addEventListener('keydown', (e) => {
     }
 })();
 })();
+
