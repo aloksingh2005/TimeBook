@@ -1855,6 +1855,102 @@ body.sidebar-collapsed .bulk-actions {
   margin-bottom: 0.35rem;
 }
 
+.customer-details-modal {
+  display: grid;
+  gap: 1rem;
+}
+
+.customer-details-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.customer-identity-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.customer-identity-contact {
+  margin-top: 0.2rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.customer-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.customer-history-title {
+  font-weight: 700;
+}
+
+.customer-history-list {
+  max-height: 240px;
+  overflow: auto;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.customer-history-item {
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+
+.customer-history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.customer-history-date {
+  font-weight: 600;
+}
+
+.customer-history-meta {
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.customer-history-empty {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.payment-status-modal {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.payment-status-modal-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.payment-status-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.btn-warning {
+  background: #f59e0b;
+  color: #111827;
+  border: none;
+}
+
+.btn-warning:hover {
+  background: #d97706;
+}
+
 /* ============================================================
    RESPONSIVE & COLLAPSIBLE SIDEBAR RULES
    ============================================================ */

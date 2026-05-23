@@ -182,6 +182,7 @@ function fromDbCalculation(c) {
         combined: Boolean(c.combined),
         timeSlots: c.time_slots,
         paymentStatus: c.payment_status || 'due',
+        paymentStatusUpdatedAt: c.payment_status_updated_at ? new Date(c.payment_status_updated_at) : null,
         notes: c.notes || '',
         deviceType: c.device_type || ''
     };
@@ -201,6 +202,9 @@ function toDbCalculation(t) {
         rate_type: t.rateType,
         rate_amount: t.rateAmount,
         payment_status: t.paymentStatus || 'due',
+        payment_status_updated_at: t.paymentStatusUpdatedAt
+            ? (t.paymentStatusUpdatedAt instanceof Date ? t.paymentStatusUpdatedAt.toISOString() : t.paymentStatusUpdatedAt)
+            : null,
         combined: Boolean(t.combined),
         time_slots: t.timeSlots || null,
         created_at: t.date instanceof Date ? t.date.toISOString() : t.date,
@@ -814,15 +818,13 @@ function updateHistoryList(filter = '') {
             <div class="history-content ${t.combined ? 'combined-transaction' : ''}">
                 <div class="history-meta">
                     <input type="checkbox" class="history-checkbox" data-id="${t.id}">
-                    <button type="button" class="history-customer-link" data-customer-id="${customer?.id || ''}" title="View customer details">
-                        <span class="history-customer">${escapeHTML(customer?.name || 'Unknown')}</span>
-                    </button>
+                    <span class="history-customer">${escapeHTML(customer?.name || 'Unknown')}</span>
                     <span class="history-date">${formatDate(t.date)}</span>
                     <span class="payment-status ${paymentStatus === 'paid' ? 'status-paid' : 'status-due'}">
                         <i class="fas ${paymentStatus === 'paid' ? 'fa-check-circle' : 'fa-clock'}"></i>
                         ${paymentStatus === 'paid' ? 'Paid' : 'Due'}
                     </span>
-                    <button class="payment-toggle" data-id="${t.id}" title="Toggle payment status">
+                    <button class="payment-toggle" data-id="${t.id}" title="Change payment status">
                         <i class="fas fa-sync-alt"></i>
                     </button>
                 </div>
@@ -982,54 +984,103 @@ function openCustomerDetails(customer) {
     if (DOM.modalMessage) DOM.modalMessage.textContent = `Customer Details - ${customer.name}`;
     DOM.editForm.innerHTML = `
         <div class="customer-details-modal">
-            <div class="customer-details-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap">
-                <div>
-                    <div style="font-size:1.05rem;font-weight:700">${escapeHTML(customer.name)}</div>
-                    <div style="color:var(--text-secondary);font-size:0.9rem">${escapeHTML(customer.mobile || 'No mobile number')}</div>
+            <div class="customer-details-head">
+                <div class="customer-identity">
+                    <div class="customer-identity-name">${escapeHTML(customer.name)}</div>
+                    <div class="customer-identity-contact">${escapeHTML(customer.mobile || 'No mobile number')}</div>
                 </div>
                 ${customer.mobile ? `<a class="btn btn-secondary btn-sm" href="tel:${encodeURIComponent(customer.mobile)}"><i class="fas fa-phone"></i> Call</a>` : ''}
             </div>
-            <div class="customer-stats" style="margin-top:1rem">
+            <div class="customer-stats">
                 <div class="stat-badge paid"><span class="label">Total Paid:</span> <span class="value">${formatCurrency(totalPaid)}</span></div>
                 <div class="stat-badge due"><span class="label">Remaining Due:</span> <span class="value">${formatCurrency(totalDue)}</span></div>
                 <div class="stat-badge total"><span class="label">Transaction Total:</span> <span class="value">${formatCurrency(totalAmount)}</span></div>
                 <div class="stat-badge"><span class="label">Total Time:</span> <span class="value">${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m</span></div>
             </div>
-            <div style="margin-top:1rem;font-weight:600">Payment History</div>
-            <div style="max-height:240px;overflow:auto;margin-top:0.5rem;display:flex;flex-direction:column;gap:0.5rem">
+            <div class="customer-history-title">Payment History</div>
+            <div class="customer-history-list">
                 ${customerTransactions.length ? customerTransactions.map(t => `
-                    <div style="padding:0.6rem 0.7rem;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt)">
-                        <div style="display:flex;justify-content:space-between;gap:0.5rem;flex-wrap:wrap">
-                            <span style="font-weight:600">${formatDate(t.date)}</span>
-                            <span>${formatCurrency(t.amount)} · ${t.paymentStatus === 'paid' ? 'Paid' : 'Due'}</span>
+                    <div class="customer-history-item">
+                        <div class="customer-history-row">
+                            <span class="customer-history-date">${formatDate(t.date)}</span>
+                            <span class="customer-history-amount">${formatCurrency(t.amount)} · ${t.paymentStatus === 'paid' ? 'Paid' : 'Due'}</span>
                         </div>
-                        <div style="font-size:0.85rem;color:var(--text-secondary)">${formatTime(t.start)} - ${formatTime(t.end)} · ${t.duration.totalMinutes} min</div>
+                        <div class="customer-history-meta">${formatTime(t.start)} - ${formatTime(t.end)} · ${t.duration.totalMinutes} min</div>
                     </div>
-                `).join('') : `<div style="color:var(--text-secondary);font-style:italic">No transactions yet.</div>`}
+                `).join('') : `<div class="customer-history-empty">No transactions yet.</div>`}
             </div>
         </div>
     `;
     DOM.editForm.style.display = 'block';
     if (DOM.confirmAction) DOM.confirmAction.style.display = 'none';
-    if (DOM.cancelAction) DOM.cancelAction.textContent = 'Close';
+    if (DOM.cancelAction) DOM.cancelAction.style.display = 'none';
     DOM.actionModal?.classList.add('show');
     state.actionTarget = { action: 'viewCustomerDetails' };
 }
 
-async function togglePaymentStatus(transactionId) {
+function parseManualStatusDateTime(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function openPaymentStatusModal(transactionId) {
+    const transaction = state.transactions.find(t => t.id === transactionId);
+    if (!transaction || !DOM.editForm) return;
+
+    const currentStamp = transaction.paymentStatusUpdatedAt instanceof Date
+        ? transaction.paymentStatusUpdatedAt
+        : (transaction.paymentStatusUpdatedAt ? new Date(transaction.paymentStatusUpdatedAt) : new Date());
+    const localDateTime = new Date(currentStamp.getTime() - currentStamp.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+    if (DOM.modalMessage) DOM.modalMessage.textContent = 'Set Payment Status';
+    DOM.editForm.innerHTML = `
+        <div class="payment-status-modal">
+            <p class="payment-status-modal-subtitle">Select a status to apply immediately.</p>
+            <div class="input-group">
+                <label for="statusDateTime">Status Date & Time (optional manual value)</label>
+                <input type="datetime-local" id="statusDateTime" class="select-input" value="${localDateTime}">
+            </div>
+            <div class="payment-status-options">
+                <button type="button" class="btn btn-success payment-status-option" data-status="paid">Paid</button>
+                <button type="button" class="btn btn-warning payment-status-option" data-status="due">Due</button>
+            </div>
+        </div>
+    `;
+    DOM.editForm.style.display = 'block';
+    if (DOM.confirmAction) DOM.confirmAction.style.display = 'none';
+    if (DOM.cancelAction) DOM.cancelAction.style.display = 'none';
+    DOM.actionModal?.classList.add('show');
+    state.actionTarget = { action: 'selectPaymentStatus', transactionId };
+}
+
+async function setPaymentStatus(transactionId, newStatus, manualDateTime = null) {
     const transaction = state.transactions.find(t => t.id === transactionId);
     if (!transaction) return;
-    const newStatus = transaction.paymentStatus === 'paid' ? 'due' : 'paid';
     const oldStatus = transaction.paymentStatus;
+    const oldUpdatedAt = transaction.paymentStatusUpdatedAt;
+    const effectiveTimestamp = manualDateTime instanceof Date ? manualDateTime : new Date();
     transaction.paymentStatus = newStatus;
+    transaction.paymentStatusUpdatedAt = effectiveTimestamp;
 
     if (supabase) {
         try {
-            const { error } = await supabase.from('sessions').update({ payment_status: newStatus }).eq('id', transactionId);
+            let { error } = await supabase
+                .from('sessions')
+                .update({
+                    payment_status: newStatus,
+                    payment_status_updated_at: effectiveTimestamp.toISOString()
+                })
+                .eq('id', transactionId);
+            if (error && String(error.message || '').toLowerCase().includes('payment_status_updated_at')) {
+                const fallback = await supabase.from('sessions').update({ payment_status: newStatus }).eq('id', transactionId);
+                error = fallback.error;
+            }
             if (error) throw error;
             showNotification(`Payment status changed to ${newStatus === 'paid' ? 'Paid' : 'Due'}`);
         } catch (error) {
             transaction.paymentStatus = oldStatus;
+            transaction.paymentStatusUpdatedAt = oldUpdatedAt;
             handleBackendError(error);
         }
     }
@@ -1193,6 +1244,7 @@ if (DOM.cancelAction) {
     DOM.cancelAction.addEventListener('click', () => {
         DOM.actionModal?.classList.remove('show');
         if (DOM.confirmAction) DOM.confirmAction.style.display = '';
+        DOM.cancelAction.style.display = '';
         DOM.cancelAction.textContent = 'Cancel';
         state.actionTarget = null;
     });
@@ -1367,13 +1419,7 @@ if (DOM.historyList) {
     DOM.historyList.addEventListener('click', (e) => {
         const target = e.target.closest('button, input');
         if (!target) return;
-        if (target.classList.contains('history-customer-link') || target.closest('.history-customer-link')) {
-            const customerId = target.closest('.history-customer-link')?.getAttribute('data-customer-id');
-            if (customerId) {
-                window.location.href = `customer-details.html?id=${encodeURIComponent(customerId)}`;
-            }
-            return;
-        }
+        
         if (target.classList.contains('delete-btn') || target.closest('.delete-btn')) {
             const itemEl = target.closest('.history-item');
             const id = parseInt(itemEl?.querySelector('.history-checkbox')?.dataset.id, 10);
@@ -1388,7 +1434,7 @@ if (DOM.historyList) {
         if (target.classList.contains('payment-toggle') || target.closest('.payment-toggle')) {
             const id = parseInt(target.closest('.history-content')?.querySelector('.history-checkbox')?.dataset.id, 10);
             if (!id) return;
-            togglePaymentStatus(id);
+            openPaymentStatusModal(id);
             return;
         }
         if (target.classList.contains('history-checkbox')) {
@@ -1429,6 +1475,24 @@ if (DOM.historyNext) {
     DOM.historyNext.addEventListener('click', () => {
         state.historyPage += 1;
         updateHistoryList(DOM.historySearch?.value || '');
+    });
+}
+
+if (DOM.editForm) {
+    DOM.editForm.addEventListener('click', (e) => {
+        const optionBtn = e.target.closest('.payment-status-option');
+        if (!optionBtn) return;
+        const { action, transactionId } = state.actionTarget || {};
+        if (action !== 'selectPaymentStatus' || !transactionId) return;
+        const status = optionBtn.getAttribute('data-status');
+        if (status !== 'paid' && status !== 'due') return;
+        const manualValue = document.getElementById('statusDateTime')?.value || '';
+        const manualDate = parseManualStatusDateTime(manualValue);
+        setPaymentStatus(transactionId, status, manualDate);
+        DOM.actionModal?.classList.remove('show');
+        if (DOM.confirmAction) DOM.confirmAction.style.display = '';
+        if (DOM.cancelAction) DOM.cancelAction.style.display = '';
+        state.actionTarget = null;
     });
 }
 
@@ -2005,4 +2069,3 @@ document.addEventListener('keydown', (e) => {
     }
 })();
 })();
-
