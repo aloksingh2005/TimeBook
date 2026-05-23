@@ -25,7 +25,6 @@ const DOM = {
     endTimeInput: document.getElementById('endTime'),
     addTransactionBtn: document.getElementById('addTransaction'),
     exportJSONBtn: document.getElementById('exportJSON'),
-    exportCSVBtn: document.getElementById('exportCSV'),
     importDataInput: document.getElementById('importData'),
     historySearch: document.getElementById('historySearch'),
     clearSearchBtn: document.getElementById('clearSearch'),
@@ -575,11 +574,6 @@ function updateCustomerList(filter = '') {
     }
 
     filtered.forEach(c => {
-        const custTx = state.transactions.filter(t => t.customerId === c.id);
-        const totalAmount = custTx.reduce((sum, t) => sum + t.amount, 0);
-        const totalPaid = custTx.filter(t => t.paymentStatus === 'paid').reduce((sum, t) => sum + t.amount, 0);
-        const totalDue = custTx.filter(t => t.paymentStatus !== 'paid').reduce((sum, t) => sum + t.amount, 0);
-
         const mobile = c.mobile ? escapeHTML(c.mobile) : '';
         const item = document.createElement('div');
         item.classList.add('customer-item');
@@ -590,20 +584,6 @@ function updateCustomerList(filter = '') {
                     ${mobile
                         ? `<div class="customer-mobile"><i class="fas fa-phone" style="font-size:0.7rem"></i> ${mobile}</div>`
                         : `<div class="customer-mobile" style="color:var(--text-muted);font-style:italic">No mobile</div>`}
-                    <div class="customer-stats">
-                        <div class="stat-badge due" title="Outstanding Due">
-                            <span class="label">Due:</span>
-                            <span class="value">${formatCurrency(totalDue)}</span>
-                        </div>
-                        <div class="stat-badge paid" title="Total Paid">
-                            <span class="label">Paid:</span>
-                            <span class="value">${formatCurrency(totalPaid)}</span>
-                        </div>
-                        <div class="stat-badge total" title="Total Billed">
-                            <span class="label">Total:</span>
-                            <span class="value">${formatCurrency(totalAmount)}</span>
-                        </div>
-                    </div>
                 </div>
             </div>
             <div class="history-actions">
@@ -611,6 +591,10 @@ function updateCustomerList(filter = '') {
                 <button class="delete-btn" data-id="${c.id}" title="Delete"><i class="fas fa-trash"></i></button>
             </div>
         `;
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('button')) return;
+            openCustomerDetails(c);
+        });
         const editBtn = item.querySelector('.edit-btn');
         const deleteBtn = item.querySelector('.delete-btn');
         editBtn?.addEventListener('click', () => {
@@ -845,8 +829,9 @@ function updateHistoryList(filter = '') {
                 <div class="history-details">
                     <span class="history-detail-item"><i class="fas fa-clock"></i> ${formatTime(t.start)} &ndash; ${formatTime(t.end)}</span>
                     <span class="history-detail-item"><i class="fas fa-hourglass-half"></i> ${t.duration.hours}h ${t.duration.minutes}m</span>
+                    <span class="history-detail-item"><i class="fas fa-tag"></i> ${formatCurrency(t.rateAmount)}/${t.rateType === 'hourly' ? 'hr' : 'min'}</span>
+                    <span class="history-detail-item"><i class="fas fa-rupee-sign"></i> ${formatCurrency(t.amount)}</span>
                 </div>
-                <div class="history-amount">${formatCurrency(t.amount)}</div>
                 ${t.timeSlots ? `
                     <div class="combined-slots">
                         <strong style="font-size:0.8rem;color:var(--text-secondary)">Combined sessions:</strong>
@@ -928,7 +913,10 @@ function initCustomerDetailsPage() {
         return;
     }
 
-    const customerTransactions = state.transactions.filter(t => t.customerId === customer.id);
+    const customerTransactions = state.transactions
+        .filter(t => t.customerId === customer.id)
+        .slice()
+        .sort((a, b) => b.date - a.date);
     const totalAmount = customerTransactions.reduce((sum, t) => sum + t.amount, 0);
     const totalPaid = customerTransactions.filter(t => t.paymentStatus === 'paid').reduce((sum, t) => sum + t.amount, 0);
     const totalDue = customerTransactions.filter(t => t.paymentStatus !== 'paid').reduce((sum, t) => sum + t.amount, 0);
@@ -937,13 +925,16 @@ function initCustomerDetailsPage() {
     const minutes = totalMinutes % 60;
     const phone = String(customer.mobile || '').trim();
     const phoneHref = phone ? phone.replace(/[^\d+]/g, '') : '';
+    const escapeHTML = (str) => String(str ?? '').replace(/[&<>"]|'/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
 
     card.innerHTML = `
         <div class="customer-details-header">
             <div>
                 <p class="eyebrow">Customer Details</p>
-                <h2>${customer.name}</h2>
-                <p class="panel-subtitle">${phone || 'No mobile number saved'}</p>
+                <h2>${escapeHTML(customer.name)}</h2>
+                <p class="panel-subtitle">${escapeHTML(phone || 'No mobile number saved')}</p>
             </div>
             ${phoneHref ? `<a class="btn btn-primary" href="tel:${phoneHref}"><i class="fas fa-phone"></i> Call Customer</a>` : ''}
         </div>
@@ -965,6 +956,8 @@ function initCustomerDetailsPage() {
                     <div class="history-details">
                         <span class="history-detail-item"><i class="fas fa-clock"></i> ${formatTime(t.start)} &ndash; ${formatTime(t.end)}</span>
                         <span class="history-detail-item"><i class="fas fa-hourglass-half"></i> ${t.duration.hours}h ${t.duration.minutes}m</span>
+                        <span class="history-detail-item"><i class="fas fa-tag"></i> ${formatCurrency(t.rateAmount)}/${t.rateType === 'hourly' ? 'hr' : 'min'}</span>
+                        <span class="history-detail-item"><i class="fas fa-rupee-sign"></i> ${formatCurrency(t.amount)}</span>
                     </div>
                 </div>
             `).join('') : '<div class="empty-state"><div class="empty-state-title">No transactions yet</div></div>'}
@@ -972,50 +965,75 @@ function initCustomerDetailsPage() {
     `;
 }
 
-async function togglePaymentStatus(transactionId) {
-    const transaction = state.transactions.find(t => t.id === transactionId);
-    if (!transaction || !DOM.editForm) return;
+function openCustomerDetails(customer) {
+    if (!customer || !DOM.editForm) return;
+    const customerTransactions = state.transactions
+        .filter(t => t.customerId === customer.id)
+        .slice()
+        .sort((a, b) => b.date - a.date);
+    const totalPaid = customerTransactions.filter(t => t.paymentStatus === 'paid').reduce((sum, t) => sum + t.amount, 0);
+    const totalDue = customerTransactions.filter(t => t.paymentStatus !== 'paid').reduce((sum, t) => sum + t.amount, 0);
+    const totalAmount = customerTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalMinutes = customerTransactions.reduce((sum, t) => sum + t.duration.totalMinutes, 0);
+    const escapeHTML = (str) => String(str ?? '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
 
-    if (DOM.modalMessage) DOM.modalMessage.textContent = 'Update Payment Status';
+    if (DOM.modalMessage) DOM.modalMessage.textContent = `Customer Details - ${customer.name}`;
     DOM.editForm.innerHTML = `
-        <div class="payment-modal-content" style="display:flex;gap:1rem;margin-top:1rem">
-            <div class="payment-option ${transaction.paymentStatus === 'paid' ? 'selected' : ''}" data-status="paid" style="flex:1;padding:1rem;border:1px solid var(--border);border-radius:var(--radius);text-align:center;cursor:pointer">
-                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.5rem;margin-bottom:0.5rem"></i>
-                <div style="font-weight:600">Paid</div>
+        <div class="customer-details-modal">
+            <div class="customer-details-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+                <div>
+                    <div style="font-size:1.05rem;font-weight:700">${escapeHTML(customer.name)}</div>
+                    <div style="color:var(--text-secondary);font-size:0.9rem">${escapeHTML(customer.mobile || 'No mobile number')}</div>
+                </div>
+                ${customer.mobile ? `<a class="btn btn-secondary btn-sm" href="tel:${encodeURIComponent(customer.mobile)}"><i class="fas fa-phone"></i> Call</a>` : ''}
             </div>
-            <div class="payment-option ${transaction.paymentStatus === 'due' ? 'selected' : ''}" data-status="due" style="flex:1;padding:1rem;border:1px solid var(--border);border-radius:var(--radius);text-align:center;cursor:pointer">
-                <i class="fas fa-clock" style="color:var(--danger);font-size:1.5rem;margin-bottom:0.5rem"></i>
-                <div style="font-weight:600">Due</div>
+            <div class="customer-stats" style="margin-top:1rem">
+                <div class="stat-badge paid"><span class="label">Total Paid:</span> <span class="value">${formatCurrency(totalPaid)}</span></div>
+                <div class="stat-badge due"><span class="label">Remaining Due:</span> <span class="value">${formatCurrency(totalDue)}</span></div>
+                <div class="stat-badge total"><span class="label">Transaction Total:</span> <span class="value">${formatCurrency(totalAmount)}</span></div>
+                <div class="stat-badge"><span class="label">Total Time:</span> <span class="value">${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m</span></div>
+            </div>
+            <div style="margin-top:1rem;font-weight:600">Payment History</div>
+            <div style="max-height:240px;overflow:auto;margin-top:0.5rem;display:flex;flex-direction:column;gap:0.5rem">
+                ${customerTransactions.length ? customerTransactions.map(t => `
+                    <div style="padding:0.6rem 0.7rem;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt)">
+                        <div style="display:flex;justify-content:space-between;gap:0.5rem;flex-wrap:wrap">
+                            <span style="font-weight:600">${formatDate(t.date)}</span>
+                            <span>${formatCurrency(t.amount)} · ${t.paymentStatus === 'paid' ? 'Paid' : 'Due'}</span>
+                        </div>
+                        <div style="font-size:0.85rem;color:var(--text-secondary)">${formatTime(t.start)} - ${formatTime(t.end)} · ${t.duration.totalMinutes} min</div>
+                    </div>
+                `).join('') : `<div style="color:var(--text-secondary);font-style:italic">No transactions yet.</div>`}
             </div>
         </div>
     `;
     DOM.editForm.style.display = 'block';
+    if (DOM.confirmAction) DOM.confirmAction.style.display = 'none';
+    if (DOM.cancelAction) DOM.cancelAction.textContent = 'Close';
     DOM.actionModal?.classList.add('show');
+    state.actionTarget = { action: 'viewCustomerDetails' };
+}
 
-    const options = DOM.editForm.querySelectorAll('.payment-option');
-    options.forEach(option => {
-        option.addEventListener('click', async () => {
-            const status = option.dataset.status;
-            const oldStatus = transaction.paymentStatus;
-            transaction.paymentStatus = status;
-            
-            if (supabase) {
-                try {
-                    const { error } = await supabase.from('sessions').update({ payment_status: status }).eq('id', transactionId);
-                    if (error) throw error;
-                    showNotification(`Payment status updated to ${status}`);
-                } catch (error) {
-                    transaction.paymentStatus = oldStatus; // revert
-                    handleBackendError(error);
-                }
-            }
-            
-            updateHistoryList(DOM.historySearch?.value || '');
-            DOM.actionModal?.classList.remove('show');
-        }, { once: true });
-    });
+async function togglePaymentStatus(transactionId) {
+    const transaction = state.transactions.find(t => t.id === transactionId);
+    if (!transaction) return;
+    const newStatus = transaction.paymentStatus === 'paid' ? 'due' : 'paid';
+    const oldStatus = transaction.paymentStatus;
+    transaction.paymentStatus = newStatus;
 
-    state.actionTarget = { action: 'updatePayment', transactionId };
+    if (supabase) {
+        try {
+            const { error } = await supabase.from('sessions').update({ payment_status: newStatus }).eq('id', transactionId);
+            if (error) throw error;
+            showNotification(`Payment status changed to ${newStatus === 'paid' ? 'Paid' : 'Due'}`);
+        } catch (error) {
+            transaction.paymentStatus = oldStatus;
+            handleBackendError(error);
+        }
+    }
+    updateHistoryList(DOM.historySearch?.value || '');
 }
 
 // Client-Side Analytics Processing
@@ -1174,6 +1192,8 @@ if (DOM.confirmAction) {
 if (DOM.cancelAction) {
     DOM.cancelAction.addEventListener('click', () => {
         DOM.actionModal?.classList.remove('show');
+        if (DOM.confirmAction) DOM.confirmAction.style.display = '';
+        DOM.cancelAction.textContent = 'Cancel';
         state.actionTarget = null;
     });
 }
@@ -1417,42 +1437,20 @@ if (DOM.exportJSONBtn) {
     DOM.exportJSONBtn.addEventListener('click', () => {
         const filenameDefault = `timebook_data_${new Date().toISOString().slice(0, 10)}.json`;
         const filename = prompt('Enter filename for JSON export:', filenameDefault) || filenameDefault;
-        const data = { transactions: state.transactions, customers: state.customers };
+        const data = {
+            version: 2,
+            exportedAt: new Date().toISOString(),
+            appSettings: {
+                theme: localStorage.getItem('theme') || 'light',
+                palette: localStorage.getItem('palette') || 'mint',
+                fixedHourlyRate: RATE_CONFIG.hourly,
+                fixedMinuteRate: RATE_CONFIG.minute
+            },
+            transactions: state.transactions,
+            customers: state.customers
+        };
         const json = JSON.stringify(data, null, 2);
         const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-}
-
-if (DOM.exportCSVBtn) {
-    DOM.exportCSVBtn.addEventListener('click', () => {
-        const filenameDefault = `timebook_transactions_${new Date().toISOString().slice(0, 10)}.csv`;
-        const filename = prompt('Enter filename for CSV export:', filenameDefault) || filenameDefault;
-        const escapeCSV = (val) => {
-            const s = String(val ?? '');
-            if (/[",\n]/.test(s)) {
-                return '"' + s.replace(/"/g, '""') + '"';
-            }
-            return s;
-        };
-        const headers = ['Customer', 'Date', 'Start Time', 'End Time', 'Duration (min)', 'Amount'];
-        const rows = state.transactions.map(t => {
-            const customer = state.customers.find(c => c.id === t.customerId);
-            const customerName = customer?.name || 'Unknown';
-            const dateStr = formatDate(t.date);
-            const startStr = formatTime(t.start);
-            const endStr = formatTime(t.end);
-            const amountStr = t.amount.toFixed(2);
-            return [customerName, dateStr, startStr, endStr, t.duration.totalMinutes, amountStr]
-                .map(escapeCSV).join(',');
-        });
-        const csv = [headers.join(','), ...rows].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -1478,6 +1476,10 @@ if (DOM.importDataInput) {
                     name: sanitizeString(c?.name ?? ''),
                     mobile: sanitizeString(c?.mobile ?? c?.contact ?? c?.phone ?? '') || null
                 })).filter(c => c.name);
+
+                const existingNameMobile = new Set(
+                    state.customers.map(c => `${(c.name || '').toLowerCase().trim()}|${(c.mobile || '').trim()}`)
+                );
 
                 const importedTransactions = validArray(raw.transactions).map((t, idx) => {
                     const start = new Date(t?.start || t?.start_time);
@@ -1524,6 +1526,17 @@ if (DOM.importDataInput) {
                 const customerIdMap = {};
 
                 for (const c of importedCustomers) {
+                    const key = `${(c.name || '').toLowerCase().trim()}|${(c.mobile || '').trim()}`;
+                    if (existingNameMobile.has(key)) {
+                        const existingCustomer = state.customers.find(ex =>
+                            (ex.name || '').toLowerCase().trim() === (c.name || '').toLowerCase().trim()
+                            && (ex.mobile || '').trim() === (c.mobile || '').trim()
+                        );
+                        if (existingCustomer && c.id !== undefined) {
+                            customerIdMap[c.id] = existingCustomer.id;
+                        }
+                        continue;
+                    }
                     const payload = {
                         name: c.name,
                         phone: c.mobile || null
@@ -1533,6 +1546,7 @@ if (DOM.importDataInput) {
                     if (data && data[0]) {
                         const newCustomer = fromDbCustomer(data[0]);
                         state.customers.push(newCustomer);
+                        existingNameMobile.add(key);
                         if (c.id !== undefined) {
                             customerIdMap[c.id] = newCustomer.id;
                         }
@@ -1556,6 +1570,25 @@ if (DOM.importDataInput) {
                 if (sessionsToInsert.length > 0) {
                     const { error } = await supabase.from('sessions').insert(sessionsToInsert);
                     if (error) throw error;
+                }
+
+                if (raw.appSettings && typeof raw.appSettings === 'object') {
+                    const importedHourly = parseInt(raw.appSettings.fixedHourlyRate, 10);
+                    const importedMinute = parseInt(raw.appSettings.fixedMinuteRate, 10);
+                    if (Number.isFinite(importedHourly) && importedHourly > 0) {
+                        localStorage.setItem('fixed_hourly_rate', String(importedHourly));
+                        RATE_CONFIG.hourly = importedHourly;
+                    }
+                    if (Number.isFinite(importedMinute) && importedMinute > 0) {
+                        localStorage.setItem('fixed_minute_rate', String(importedMinute));
+                        RATE_CONFIG.minute = importedMinute;
+                    }
+                    if (raw.appSettings.theme === 'dark' || raw.appSettings.theme === 'light') {
+                        localStorage.setItem('theme', raw.appSettings.theme);
+                    }
+                    if (raw.appSettings.palette) {
+                        localStorage.setItem('palette', String(raw.appSettings.palette));
+                    }
                 }
 
                 await Promise.all([loadCustomers(), loadTransactions()]);
@@ -1898,10 +1931,6 @@ document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
         e.preventDefault();
         window.location.href = 'history.html';
-    }
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') {
-        e.preventDefault();
-        DOM.exportCSVBtn?.click();
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
         e.preventDefault();
