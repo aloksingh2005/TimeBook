@@ -363,6 +363,17 @@ function formatTime(d) {
     }
 }
 
+function formatDateTime(d) {
+    try {
+        return new Intl.DateTimeFormat(userLocale, {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        }).format(d);
+    } catch (_) {
+        return d.toLocaleString();
+    }
+}
+
 function showNotification(message, isError = false, duration = 3000) {
     const container = document.createElement('div');
     container.className = 'notification-container';
@@ -597,7 +608,7 @@ function updateCustomerList(filter = '') {
         `;
         item.addEventListener('click', (e) => {
             if (e.target.closest('button')) return;
-            openCustomerDetails(c);
+            window.location.href = `customer-details.html?id=${encodeURIComponent(c.id)}`;
         });
         const editBtn = item.querySelector('.edit-btn');
         const deleteBtn = item.querySelector('.delete-btn');
@@ -908,6 +919,10 @@ function initCustomerDetailsPage() {
     if (!card) return;
 
     const customerId = parseInt(new URLSearchParams(window.location.search).get('id'), 10);
+    if (!customerId) {
+        window.location.href = 'customers.html';
+        return;
+    }
     const customer = state.customers.find(c => c.id === customerId);
 
     if (!customer) {
@@ -915,6 +930,10 @@ function initCustomerDetailsPage() {
         return;
     }
 
+    renderCustomerDetailsCard(customer, card);
+}
+
+function renderCustomerDetailsCard(customer, card) {
     const customerTransactions = state.transactions
         .filter(t => t.customerId === customer.id)
         .slice()
@@ -927,95 +946,86 @@ function initCustomerDetailsPage() {
     const minutes = totalMinutes % 60;
     const phone = String(customer.mobile || '').trim();
     const phoneHref = phone ? phone.replace(/[^\d+]/g, '') : '';
-    const escapeHTML = (str) => String(str ?? '').replace(/[&<>"]|'/g, (ch) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]));
-
-    card.innerHTML = `
-        <div class="customer-details-header">
-            <div>
-                <p class="eyebrow">Customer Details</p>
-                <h2>${escapeHTML(customer.name)}</h2>
-                <p class="panel-subtitle">${escapeHTML(phone || 'No mobile number saved')}</p>
-            </div>
-            ${phoneHref ? `<a class="btn btn-primary" href="tel:${phoneHref}"><i class="fas fa-phone"></i> Call Customer</a>` : ''}
-        </div>
-        <div class="customer-details-grid">
-            <div class="summary-tile"><span>Sessions</span><strong>${customerTransactions.length}</strong></div>
-            <div class="summary-tile"><span>Total Time</span><strong>${hours}h ${minutes}m</strong></div>
-            <div class="summary-tile"><span>Total Billed</span><strong>${formatCurrency(totalAmount)}</strong></div>
-            <div class="summary-tile"><span>Total Paid</span><strong>${formatCurrency(totalPaid)}</strong></div>
-            <div class="summary-tile"><span>Total Due</span><strong>${formatCurrency(totalDue)}</strong></div>
-            <div class="summary-tile"><span>Contact</span><strong>${phone || 'N/A'}</strong></div>
-        </div>
-        <div class="customer-transaction-list">
-            ${customerTransactions.length ? customerTransactions.map(t => `
-                <div class="customer-transaction-card">
-                    <div class="customer-transaction-top">
-                        <strong>${formatDate(t.date)}</strong>
-                        <span>${formatCurrency(t.amount)}</span>
-                    </div>
-                    <div class="history-details">
-                        <span class="history-detail-item"><i class="fas fa-clock"></i> ${formatTime(t.start)} &ndash; ${formatTime(t.end)}</span>
-                        <span class="history-detail-item"><i class="fas fa-hourglass-half"></i> ${t.duration.hours}h ${t.duration.minutes}m</span>
-                        <span class="history-detail-item"><i class="fas fa-tag"></i> ${formatCurrency(t.rateAmount)}/${t.rateType === 'hourly' ? 'hr' : 'min'}</span>
-                        <span class="history-detail-item"><i class="fas fa-rupee-sign"></i> ${formatCurrency(t.amount)}</span>
-                    </div>
-                </div>
-            `).join('') : '<div class="empty-state"><div class="empty-state-title">No transactions yet</div></div>'}
-        </div>
-    `;
-}
-
-function openCustomerDetails(customer) {
-    if (!customer || !DOM.editForm) return;
-    const customerTransactions = state.transactions
-        .filter(t => t.customerId === customer.id)
-        .slice()
-        .sort((a, b) => b.date - a.date);
-    const totalPaid = customerTransactions.filter(t => t.paymentStatus === 'paid').reduce((sum, t) => sum + t.amount, 0);
-    const totalDue = customerTransactions.filter(t => t.paymentStatus !== 'paid').reduce((sum, t) => sum + t.amount, 0);
-    const totalAmount = customerTransactions.reduce((sum, t) => sum + t.amount, 0);
-    const totalMinutes = customerTransactions.reduce((sum, t) => sum + t.duration.totalMinutes, 0);
     const escapeHTML = (str) => String(str ?? '').replace(/[&<>"']/g, (ch) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[ch]));
 
-    if (DOM.modalMessage) DOM.modalMessage.textContent = `Customer Details - ${customer.name}`;
-    DOM.editForm.innerHTML = `
-        <div class="customer-details-modal">
-            <div class="customer-details-head">
-                <div class="customer-identity">
-                    <div class="customer-identity-name">${escapeHTML(customer.name)}</div>
-                    <div class="customer-identity-contact">${escapeHTML(customer.mobile || 'No mobile number')}</div>
+    card.innerHTML = `
+        <div class="cd-header">
+            <div class="cd-identity">
+                <p class="eyebrow">Customer Details</p>
+                <div class="cd-name">${escapeHTML(customer.name)}</div>
+                <div class="cd-phone">
+                    <i class="fas fa-phone"></i>
+                    ${phone ? escapeHTML(phone) : '<span style="color:var(--text-muted);font-style:italic">No mobile number saved</span>'}
                 </div>
-                ${customer.mobile ? `<a class="btn btn-secondary btn-sm" href="tel:${encodeURIComponent(customer.mobile)}"><i class="fas fa-phone"></i> Call</a>` : ''}
             </div>
-            <div class="customer-stats">
-                <div class="stat-badge paid"><span class="label">Total Paid:</span> <span class="value">${formatCurrency(totalPaid)}</span></div>
-                <div class="stat-badge due"><span class="label">Remaining Due:</span> <span class="value">${formatCurrency(totalDue)}</span></div>
-                <div class="stat-badge total"><span class="label">Transaction Total:</span> <span class="value">${formatCurrency(totalAmount)}</span></div>
-                <div class="stat-badge"><span class="label">Total Time:</span> <span class="value">${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m</span></div>
+            ${phoneHref ? `<a class="btn btn-primary cd-call-btn" href="tel:${phoneHref}"><i class="fas fa-phone"></i> Call</a>` : ''}
+        </div>
+
+        <div class="cd-stats-grid">
+            <div class="cd-stat-card">
+                <span class="cd-stat-label">Sessions</span>
+                <span class="cd-stat-value">${customerTransactions.length}</span>
             </div>
-            <div class="customer-history-title">Payment History</div>
-            <div class="customer-history-list">
-                ${customerTransactions.length ? customerTransactions.map(t => `
-                    <div class="customer-history-item">
-                        <div class="customer-history-row">
-                            <span class="customer-history-date">${formatDate(t.date)}</span>
-                            <span class="customer-history-amount">${formatCurrency(t.amount)} · ${t.paymentStatus === 'paid' ? 'Paid' : 'Due'}</span>
-                        </div>
-                        <div class="customer-history-meta">${formatTime(t.start)} - ${formatTime(t.end)} · ${t.duration.totalMinutes} min</div>
-                    </div>
-                `).join('') : `<div class="customer-history-empty">No transactions yet.</div>`}
+            <div class="cd-stat-card">
+                <span class="cd-stat-label">Total Time</span>
+                <span class="cd-stat-value">${hours}h ${minutes}m</span>
+            </div>
+            <div class="cd-stat-card cd-stat-paid">
+                <span class="cd-stat-label">Total Paid</span>
+                <span class="cd-stat-value">${formatCurrency(totalPaid)}</span>
+            </div>
+            <div class="cd-stat-card cd-stat-due">
+                <span class="cd-stat-label">Total Due</span>
+                <span class="cd-stat-value">${formatCurrency(totalDue)}</span>
+            </div>
+            <div class="cd-stat-card cd-stat-total">
+                <span class="cd-stat-label">Total Billed</span>
+                <span class="cd-stat-value">${formatCurrency(totalAmount)}</span>
             </div>
         </div>
+
+        <div class="cd-section-title"><i class="fas fa-history"></i> Payment History</div>
+        <div class="cd-tx-list">
+            ${customerTransactions.length ? customerTransactions.map(t => {
+                const paymentStatus = t.paymentStatus === 'paid' ? 'paid' : 'due';
+                const updatedStr = t.paymentStatusUpdatedAt
+                    ? formatDateTime(t.paymentStatusUpdatedAt)
+                    : '';
+                return `
+                <div class="cd-tx-card" data-tx-id="${t.id}">
+                    <div class="cd-tx-top">
+                        <span class="cd-tx-date">${formatDate(t.date)}</span>
+                        <span class="cd-tx-amount">${formatCurrency(t.amount)}</span>
+                    </div>
+                    <div class="cd-tx-details">
+                        <span><i class="fas fa-clock"></i> ${formatTime(t.start)} &ndash; ${formatTime(t.end)}</span>
+                        <span><i class="fas fa-hourglass-half"></i> ${t.duration.hours}h ${t.duration.minutes}m</span>
+                        <span><i class="fas fa-tag"></i> ${formatCurrency(t.rateAmount)}/${t.rateType === 'hourly' ? 'hr' : 'min'}</span>
+                    </div>
+                    ${t.notes ? `<div class="cd-tx-notes"><i class="fas fa-sticky-note"></i> ${escapeHTML(t.notes)}</div>` : ''}
+                    <div class="cd-tx-footer">
+                        <div class="cd-tx-status-row">
+                            <span class="payment-status ${paymentStatus === 'paid' ? 'status-paid' : 'status-due'}">
+                                <i class="fas ${paymentStatus === 'paid' ? 'fa-check-circle' : 'fa-clock'}"></i>
+                                ${paymentStatus === 'paid' ? 'Paid' : 'Due'}
+                            </span>
+                            ${updatedStr ? `<span class="cd-tx-updated">${updatedStr}</span>` : ''}
+                        </div>
+                        <div class="cd-tx-actions">
+                            <button class="cd-tx-status-btn" data-tx-id="${t.id}" data-action="changeStatus">
+                                <i class="fas fa-sync-alt"></i> Status
+                            </button>
+                            <button class="cd-tx-status-btn" data-tx-id="${t.id}" data-action="deleteTx" style="color:var(--danger)">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('') : '<div class="empty-state"><div class="empty-state-title">No transactions yet</div></div>'}
+        </div>
     `;
-    DOM.editForm.style.display = 'block';
-    if (DOM.confirmAction) DOM.confirmAction.style.display = 'none';
-    if (DOM.cancelAction) DOM.cancelAction.style.display = 'none';
-    DOM.actionModal?.classList.add('show');
-    state.actionTarget = { action: 'viewCustomerDetails' };
 }
 
 function parseManualStatusDateTime(value) {
@@ -1085,6 +1095,12 @@ async function setPaymentStatus(transactionId, newStatus, manualDateTime = null)
         }
     }
     updateHistoryList(DOM.historySearch?.value || '');
+    if (document.body?.dataset?.page === 'customer-details') {
+        const customerId = parseInt(new URLSearchParams(window.location.search).get('id'), 10);
+        const cust = state.customers.find(c => c.id === customerId);
+        const card = document.getElementById('customerDetailsCard');
+        if (cust && card) renderCustomerDetailsCard(cust, card);
+    }
 }
 
 // Client-Side Analytics Processing
@@ -1219,7 +1235,7 @@ if (DOM.confirmAction) {
         } else if (action === 'bulkDelete') {
             const ids = Array.isArray(transactions) ? transactions : [];
             state.transactions = state.transactions.filter(t => !ids.includes(t.id));
-            
+
             if (supabase) {
                 try {
                     const { error } = await supabase.from('sessions').delete().in('id', ids);
@@ -1234,6 +1250,29 @@ if (DOM.confirmAction) {
             state.selectedTransactions.clear();
             updateBulkActionsVisibility();
             DOM.actionModal?.classList.remove('show');
+
+        } else if (action === 'deleteCustomerDetailTransaction') {
+            const deletedId = transaction?.id;
+            state.transactions = state.transactions.filter(t => t !== transaction);
+            DOM.actionModal?.classList.remove('show');
+
+            if (deletedId != null && supabase) {
+                try {
+                    const { error } = await supabase.from('sessions').delete().eq('id', deletedId);
+                    if (error) throw error;
+                    showNotification('Transaction deleted');
+                } catch (error) {
+                    handleBackendError(error);
+                }
+            }
+            updateHistoryList();
+            updateAnalytics();
+            if (document.body?.dataset?.page === 'customer-details') {
+                const customerId = parseInt(new URLSearchParams(window.location.search).get('id'), 10);
+                const cust = state.customers.find(c => c.id === customerId);
+                const card = document.getElementById('customerDetailsCard');
+                if (cust && card) renderCustomerDetailsCard(cust, card);
+            }
         }
         
         state.actionTarget = null;
@@ -1493,6 +1532,32 @@ if (DOM.editForm) {
         if (DOM.confirmAction) DOM.confirmAction.style.display = '';
         if (DOM.cancelAction) DOM.cancelAction.style.display = '';
         state.actionTarget = null;
+    });
+}
+
+const customerDetailsCard = document.getElementById('customerDetailsCard');
+if (customerDetailsCard) {
+    customerDetailsCard.addEventListener('click', (e) => {
+        const statusBtn = e.target.closest('.cd-tx-status-btn');
+        if (!statusBtn) return;
+        const txId = parseInt(statusBtn.getAttribute('data-tx-id'), 10);
+        const action = statusBtn.getAttribute('data-action');
+        if (!txId || !action) return;
+
+        if (action === 'changeStatus') {
+            openPaymentStatusModal(txId);
+        } else if (action === 'deleteTx') {
+            const transaction = state.transactions.find(t => t.id === txId);
+            if (!transaction) return;
+            state.actionTarget = {
+                transaction,
+                action: 'deleteCustomerDetailTransaction',
+                customerId: transaction.customerId
+            };
+            if (DOM.modalMessage) DOM.modalMessage.textContent = 'Delete this transaction?';
+            if (DOM.editForm) DOM.editForm.style.display = 'none';
+            DOM.actionModal?.classList.add('show');
+        }
     });
 }
 

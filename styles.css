@@ -1809,7 +1809,9 @@ body.sidebar-collapsed .bulk-actions {
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .customer-details-grid {
@@ -1838,14 +1840,15 @@ body.sidebar-collapsed .bulk-actions {
 
 .customer-transaction-list {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.85rem;
 }
 
 .customer-transaction-card {
-  background: var(--surface-alt);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-alt) 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.75rem;
+  padding: 0.95rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .customer-transaction-top {
@@ -1928,6 +1931,17 @@ body.sidebar-collapsed .bulk-actions {
 .payment-status-modal {
   display: grid;
   gap: 0.85rem;
+}
+
+@media (max-width: 700px) {
+  .customer-details-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .summary-tile {
+    padding: 0.85rem;
+  }
 }
 
 .payment-status-modal-subtitle {
@@ -2156,6 +2170,262 @@ body.sidebar-collapsed .bulk-actions {
   .bulk-buttons {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* ============================================================
+   CUSTOMER DETAILS PAGE (Dedicated)
+   ============================================================ */
+
+.cd-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.cd-identity { flex: 1; min-width: 0; }
+
+.cd-name {
+  font-family: "Fraunces", serif;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.cd-phone {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.cd-phone i { font-size: 0.75rem; }
+
+.cd-call-btn {
+  flex-shrink: 0;
+}
+
+.cd-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.cd-stat-card {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  text-align: center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cd-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px var(--shadow);
+}
+
+.cd-stat-card.cd-stat-paid {
+  border-color: rgba(22, 163, 74, 0.22);
+  background: rgba(22, 163, 74, 0.06);
+}
+
+.cd-stat-card.cd-stat-due {
+  border-color: rgba(220, 38, 38, 0.18);
+  background: rgba(220, 38, 38, 0.05);
+}
+
+.cd-stat-card.cd-stat-total {
+  border-color: rgba(15, 118, 110, 0.2);
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  color: #fff;
+}
+
+.cd-stat-card.cd-stat-total .cd-stat-label { color: rgba(255,255,255,0.75); }
+.cd-stat-card.cd-stat-total .cd-stat-value { color: #fff; }
+
+.cd-stat-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.cd-stat-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cd-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.cd-section-title i { font-size: 0.85rem; }
+
+.cd-tx-card {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+  margin-bottom: 0.75rem;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cd-tx-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px var(--shadow);
+}
+
+.cd-tx-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.cd-tx-date {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.93rem;
+}
+
+.cd-tx-amount {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--primary);
+}
+
+.cd-tx-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.9rem;
+  color: var(--text-secondary);
+  font-size: 0.83rem;
+  margin-bottom: 0.55rem;
+}
+
+.cd-tx-details span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.cd-tx-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.cd-tx-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cd-tx-updated {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.cd-tx-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.cd-tx-status-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: all 0.18s ease;
+}
+
+.cd-tx-status-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+.cd-tx-notes {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border);
+}
+
+@media (max-width: 700px) {
+  .cd-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cd-call-btn {
+    align-self: flex-start;
+  }
+
+  .cd-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cd-tx-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .cd-tx-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .cd-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cd-stat-card {
+    padding: 0.75rem 0.6rem;
+  }
+
+  .cd-stat-value {
+    font-size: 1.05rem;
   }
 }
 
