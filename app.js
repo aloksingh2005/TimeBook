@@ -73,6 +73,39 @@ const state = {
     calculatorMode: 'duration' // default mode
 };
 
+function normalizeId(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+}
+
+function idsEqual(a, b) {
+    const left = normalizeId(a);
+    const right = normalizeId(b);
+    return Boolean(left && right && left === right);
+}
+
+function getCustomerIdFromURL() {
+    const rawId = new URLSearchParams(window.location.search).get('id');
+    return normalizeId(rawId);
+}
+
+function refreshCustomerDetailsPage() {
+    if (document.body?.dataset?.page !== 'customer-details') return;
+    const customerId = getCustomerIdFromURL();
+    const card = document.getElementById('customerDetailsCard');
+    if (!card) return;
+    if (!customerId) {
+        card.innerHTML = '<div class="empty-state"><div class="empty-state-title">Invalid customer link</div></div>';
+        return;
+    }
+    const customer = state.customers.find(c => idsEqual(c.id, customerId));
+    if (!customer) {
+        card.innerHTML = '<div class="empty-state"><div class="empty-state-title">Customer not found</div><div class="empty-state-text">This customer may have been removed.</div></div>';
+        return;
+    }
+    renderCustomerDetailsCard(customer, card);
+}
+
 function hasSupabaseConfig() {
     const url = String(window.ENV_SUPABASE_URL || '').trim();
     const key = String(window.ENV_SUPABASE_KEY || '').trim();
@@ -165,7 +198,7 @@ function fromDbCalculation(c) {
     const totalMinutes = (c.hours || 0) * 60 + (c.minutes || 0);
     return {
         id: c.id,
-        customerId: c.customer_id,
+        customerId: normalizeId(c.customer_id),
         start: new Date(c.start_time),
         end: new Date(c.end_time),
         date: new Date(c.created_at || c.start_time),
@@ -193,7 +226,7 @@ function toDbCalculation(t) {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return {
-        customer_id: t.customerId || null,
+        customer_id: normalizeId(t.customerId) || null,
         hours: hours,
         minutes: minutes,
         total_amount: t.amount,
@@ -681,7 +714,7 @@ async function addTransaction() {
 
     renderCalculationSummary();
 
-    const customerId = parseInt(DOM.customerSelect?.value, 10);
+    const customerId = normalizeId(DOM.customerSelect?.value);
     if (!customerId) {
         // Calculate Only mode: copy to clipboard
         const notes = DOM.sessionNotes?.value.trim() || '';
@@ -761,11 +794,11 @@ function updateHistoryList(filter = '') {
     const startFilter = DOM.historyStartDate?.value ? new Date(DOM.historyStartDate.value) : null;
     const endFilter = DOM.historyEndDate?.value ? new Date(DOM.historyEndDate.value) : null;
     const sortValue = DOM.historySort?.value || 'date_desc';
-    const selectedCustomerId = parseInt(DOM.historyCustomerFilter?.value, 10) || null;
+    const selectedCustomerId = normalizeId(DOM.historyCustomerFilter?.value);
 
     let filtered = state.transactions.filter(t => {
-        if (selectedCustomerId && t.customerId !== selectedCustomerId) return false;
-        const customer = state.customers.find(c => c.id === t.customerId);
+        if (selectedCustomerId && !idsEqual(t.customerId, selectedCustomerId)) return false;
+        const customer = state.customers.find(c => idsEqual(c.id, t.customerId));
         const customerName = customer?.name?.toLowerCase() || '';
         const date = formatDate(t.date);
         const amount = t.amount.toString();
@@ -821,7 +854,7 @@ function updateHistoryList(filter = '') {
     }
 
     pageItems.forEach(t => {
-        const customer = state.customers.find(c => c.id === t.customerId);
+        const customer = state.customers.find(c => idsEqual(c.id, t.customerId));
         const paymentStatus = t.paymentStatus === 'paid' ? 'paid' : 'due';
         const item = document.createElement('div');
         item.classList.add('history-item');
@@ -870,7 +903,7 @@ function updateHistoryList(filter = '') {
     updateCustomerFilterDropdown();
 
     if (selectedCustomerId) {
-        const customerTransactions = filtered.filter(t => t.customerId === selectedCustomerId);
+        const customerTransactions = filtered.filter(t => idsEqual(t.customerId, selectedCustomerId));
         updateHistorySummary(customerTransactions);
     } else if (DOM.historySummary) {
         DOM.historySummary.style.display = 'none';
@@ -918,15 +951,16 @@ function initCustomerDetailsPage() {
     const card = document.getElementById('customerDetailsCard');
     if (!card) return;
 
-    const customerId = parseInt(new URLSearchParams(window.location.search).get('id'), 10);
+    const customerId = getCustomerIdFromURL();
     if (!customerId) {
         window.location.href = 'customers.html';
         return;
     }
-    const customer = state.customers.find(c => c.id === customerId);
+    card.innerHTML = '<div class="empty-state"><div class="empty-state-title">Loading customer...</div><div class="empty-state-text">Fetching customer profile and transactions.</div></div>';
+    const customer = state.customers.find(c => idsEqual(c.id, customerId));
 
     if (!customer) {
-        card.innerHTML = '<div class="empty-state"><div class="empty-state-title">Customer not found</div></div>';
+        card.innerHTML = '<div class="empty-state"><div class="empty-state-title">Customer not found</div><div class="empty-state-text">This link may be invalid or the customer may have been deleted.</div></div>';
         return;
     }
 
@@ -935,7 +969,7 @@ function initCustomerDetailsPage() {
 
 function renderCustomerDetailsCard(customer, card) {
     const customerTransactions = state.transactions
-        .filter(t => t.customerId === customer.id)
+        .filter(t => idsEqual(t.customerId, customer.id))
         .slice()
         .sort((a, b) => b.date - a.date);
     const totalAmount = customerTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -960,7 +994,13 @@ function renderCustomerDetailsCard(customer, card) {
                     ${phone ? escapeHTML(phone) : '<span style="color:var(--text-muted);font-style:italic">No mobile number saved</span>'}
                 </div>
             </div>
-            ${phoneHref ? `<a class="btn btn-primary cd-call-btn" href="tel:${phoneHref}"><i class="fas fa-phone"></i> Call</a>` : ''}
+            <div class="cd-header-actions">
+                ${phoneHref ? `<a class="btn btn-primary cd-call-btn" href="tel:${phoneHref}"><i class="fas fa-phone"></i> Call</a>` : ''}
+                <button type="button" class="btn cd-action-btn" data-customer-action="edit"><i class="fas fa-edit"></i> Edit</button>
+                <button type="button" class="btn btn-warning cd-action-btn" data-customer-action="mark-all-due"><i class="fas fa-clock"></i> Mark All Due</button>
+                <button type="button" class="btn btn-success cd-action-btn" data-customer-action="mark-all-paid"><i class="fas fa-check-circle"></i> Mark All Paid</button>
+                <button type="button" class="btn btn-danger cd-action-btn" data-customer-action="delete"><i class="fas fa-trash"></i> Delete</button>
+            </div>
         </div>
 
         <div class="cd-stats-grid">
@@ -1095,12 +1135,7 @@ async function setPaymentStatus(transactionId, newStatus, manualDateTime = null)
         }
     }
     updateHistoryList(DOM.historySearch?.value || '');
-    if (document.body?.dataset?.page === 'customer-details') {
-        const customerId = parseInt(new URLSearchParams(window.location.search).get('id'), 10);
-        const cust = state.customers.find(c => c.id === customerId);
-        const card = document.getElementById('customerDetailsCard');
-        if (cust && card) renderCustomerDetailsCard(cust, card);
-    }
+    refreshCustomerDetailsPage();
 }
 
 // Client-Side Analytics Processing
@@ -1118,7 +1153,7 @@ function computeAnalyticsFromState() {
         return acc;
     }, {});
     const topCustomerEntry = Object.entries(byCustomerAmount).sort((a, b) => b[1] - a[1])[0];
-    const topCustomerName = state.customers.find(c => c.id === parseInt(topCustomerEntry?.[0], 10))?.name || 'N/A';
+    const topCustomerName = state.customers.find(c => idsEqual(c.id, topCustomerEntry?.[0]))?.name || 'N/A';
     return { totalEarnings, totalMinutes, busiestDay, topCustomerName };
 }
 
@@ -1208,12 +1243,13 @@ if (DOM.confirmAction) {
             updateCustomerSelect();
             updateCustomerFilterDropdown();
             updateHistoryList();
+            refreshCustomerDetailsPage();
             DOM.actionModal?.classList.remove('show');
 
         } else if (action === 'deleteCustomer') {
             const customerId = customer.id;
-            state.transactions = state.transactions.filter(t => t.customerId !== customerId);
-            state.customers = state.customers.filter(c => c.id !== customerId);
+            state.transactions = state.transactions.filter(t => !idsEqual(t.customerId, customerId));
+            state.customers = state.customers.filter(c => !idsEqual(c.id, customerId));
             item?.remove();
             DOM.actionModal?.classList.remove('show');
             
@@ -1222,6 +1258,9 @@ if (DOM.confirmAction) {
             updateHistoryList();
             updateAnalytics();
             showNotification('Customer deleted');
+            if (document.body?.dataset?.page === 'customer-details' && idsEqual(getCustomerIdFromURL(), customerId)) {
+                window.location.href = 'customers.html';
+            }
             
             if (supabase) {
                 try {
@@ -1267,12 +1306,7 @@ if (DOM.confirmAction) {
             }
             updateHistoryList();
             updateAnalytics();
-            if (document.body?.dataset?.page === 'customer-details') {
-                const customerId = parseInt(new URLSearchParams(window.location.search).get('id'), 10);
-                const cust = state.customers.find(c => c.id === customerId);
-                const card = document.getElementById('customerDetailsCard');
-                if (cust && card) renderCustomerDetailsCard(cust, card);
-            }
+            refreshCustomerDetailsPage();
         }
         
         state.actionTarget = null;
@@ -1388,7 +1422,7 @@ if (DOM.bulkAddBtn) {
             }));
 
             const payload = toDbCalculation({
-                customerId: parseInt(customerId, 10),
+                customerId: normalizeId(customerId),
                 start: new Date(Math.min(...customerTransactions.map(t => t.start.getTime()))),
                 end: new Date(Math.max(...customerTransactions.map(t => t.end.getTime()))),
                 durationMinutes: totalMinutes,
@@ -1539,6 +1573,50 @@ const customerDetailsCard = document.getElementById('customerDetailsCard');
 if (customerDetailsCard) {
     customerDetailsCard.addEventListener('click', (e) => {
         const statusBtn = e.target.closest('.cd-tx-status-btn');
+        const customerActionBtn = e.target.closest('[data-customer-action]');
+        if (customerActionBtn) {
+            const action = customerActionBtn.getAttribute('data-customer-action');
+            const customerId = getCustomerIdFromURL();
+            const customer = state.customers.find(c => idsEqual(c.id, customerId));
+            if (!customer) {
+                showNotification('Customer not found', true);
+                return;
+            }
+            if (action === 'edit') {
+                const esc = (str) => String(str ?? '').replace(/[&<>"']/g, (ch) => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+                }[ch]));
+                state.actionTarget = { customer, action: 'editCustomer' };
+                if (DOM.modalMessage) DOM.modalMessage.textContent = 'Edit Customer';
+                if (DOM.editForm) {
+                    DOM.editForm.innerHTML = `
+                        <div class="input-group" style="margin-bottom:1rem">
+                            <label for="editCustomerName">Customer Name <span style="color:var(--danger)">*</span></label>
+                            <input type="text" id="editCustomerName" class="select-input" value="${esc(customer.name)}">
+                        </div>
+                        <div class="input-group">
+                            <label for="editCustomerPhone">Mobile Number (optional)</label>
+                            <input type="tel" id="editCustomerPhone" class="select-input" value="${esc(customer.mobile || '')}">
+                        </div>
+                    `;
+                    DOM.editForm.style.display = 'block';
+                }
+                DOM.actionModal?.classList.add('show');
+            } else if (action === 'delete') {
+                state.actionTarget = { customer, action: 'deleteCustomer' };
+                if (DOM.modalMessage) DOM.modalMessage.textContent = 'Delete this customer and all related transactions?';
+                if (DOM.editForm) DOM.editForm.style.display = 'none';
+                DOM.actionModal?.classList.add('show');
+            } else if (action === 'mark-all-paid' || action === 'mark-all-due') {
+                const newStatus = action === 'mark-all-paid' ? 'paid' : 'due';
+                const txs = state.transactions.filter(t => idsEqual(t.customerId, customer.id));
+                Promise.all(txs.map(tx => setPaymentStatus(tx.id, newStatus))).then(() => {
+                    showNotification(`Marked ${txs.length} transaction(s) as ${newStatus}`);
+                });
+            }
+            return;
+        }
+
         if (!statusBtn) return;
         const txId = parseInt(statusBtn.getAttribute('data-tx-id'), 10);
         const action = statusBtn.getAttribute('data-action');
@@ -1627,7 +1705,7 @@ if (DOM.importDataInput) {
                     const paymentStatus = t?.paymentStatus ?? (t?.payment_status === 'paid' ? 'paid' : 'due');
                     return {
                         id,
-                        customerId: parseInt(t?.customerId || t?.customer_id, 10) || 0,
+                        customerId: normalizeId(t?.customerId || t?.customer_id),
                         start: start.toISOString(),
                         end: end.toISOString(),
                         durationMinutes: duration.totalMinutes,
@@ -1642,7 +1720,7 @@ if (DOM.importDataInput) {
                         notes: t?.notes || '',
                         deviceType: t?.deviceType || t?.device_type || ''
                     };
-                }).filter(t => t.customerId && t.durationMinutes > 0);
+                }).filter(t => normalizeId(t.customerId) && t.durationMinutes > 0);
 
                 if (!supabase) {
                     showNotification('Database is offline. Cannot import data.', true);
